@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Message = {
   id: number;
@@ -9,54 +9,148 @@ type Message = {
 };
 
 export default function HomePage() {
+  const [sessionId, setSessionId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    async function initSession() {
+      // Load existing session_id from localStorage
+      const stored = window.localStorage.getItem("session_id");
+      if (stored) {
+        setSessionId(Number(stored));
+        return;
+      }
+
+      // If not found, create a new session on the backend
+      const res = await fetch("http://127.0.0.1:8000/sessions", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({})
+      });
+
+      if (!res.ok) {
+        console.error("Failed to create session", res.status);
+        return;
+      }
+
+      const data: {id:number} = await res.json()
+
+      // Save to state + localStorage
+      setSessionId(data.id)
+      window.localStorage.setItem("session_id", String(data.id));
+    }
+
+    initSession();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || loading) return;
+    if (!sessionId) return;
 
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    
     const userMessage: Message = {
       id: messages.length + 1,
       text: trimmed,
       role: "user",
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const assistantMessage: Message = {
+    id: messages.length + 2,
+    text: "",
+    role: "assistant",
+    };
+
+    setMessages((prev) => [...prev, userMessage, assistantMessage]);
     setInput("");
     setLoading(true);
 
+    const assistantIndex = messages.length + 1;
+
     try {
-    const res = await fetch("http://127.0.0.1:8000/echo", {
-      method: 'POST',
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ message: trimmed}),
-    });
+      const res = await fetch("http://127.0.0.1:8000/chat", {
+        method: 'POST',
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ 
+          session_id: sessionId,
+          message: trimmed
+        }),
+      });
 
-    if (!res.ok) {
-      throw new Error(`HTTP error ${res.status}`);
-    }
+      if (!res.ok) {
+        throw new Error(`HTTP error ${res.status}`);
+      }
 
-    const data: { you_sent: string} = await res.json();
+      if (!res.body) {
+        throw new Error("ReadableStream not supported or no body on response");
+      }
 
-    const assistantMessage: Message = {
-      id: userMessage.id + 1,
-      text: `Echo from API: ${data.you_sent}`,
-      role: "assistant",
-    };
-    setMessages((prev) => [...prev, assistantMessage])
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+
+        buffer += decoder.decode(value, {stream: true});
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line.startsWith("data:")) continue;
+
+          const dataStr = line.slice(5).trim();
+          if (!dataStr) continue;
+
+          if (dataStr === "[DONE]") {
+            setLoading(false)
+            return;
+          }
+
+          try {
+            const parsed = JSON.parse(dataStr);
+
+            if (parsed.error) {
+              throw new Error(parsed.Error);
+            }
+            
+            if (parsed.token) {
+              fullText += parsed.token;
+
+              setMessages(prev => {
+                const copy = [...prev];
+                copy[assistantIndex] = {
+                  ...copy[assistantIndex],
+                  text: fullText
+                };
+                return copy;
+              });
+            }
+          }
+          catch (err) {
+            console.error("Failed to parse SSE chunk:", dataStr, err)
+          }
+        }
+      } 
   } catch(err) {
     console.error(err);
-    const errorMessage: Message = {
-      id: messages.length + 2,
-      text: "Error calling API.",
-      role: "assistant",
-    };
-    setMessages((prev) => [...prev, errorMessage]);
+    setMessages((prev) => {
+      const copy = [...prev];
+      copy[assistantIndex] = {
+        ...copy[assistantIndex],
+        text: "Error calling API.",
+      };
+      return copy;
+    });
   } finally {
     setLoading(false);
   }
