@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, ComponentPropsWithoutRef } from "react";
+import ReactMarkdown, {
+  type Components,
+} from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Message = {
   id: number;
@@ -13,7 +17,6 @@ export default function HomePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  console.log("Fetching messages for session", sessionId);
 
   useEffect(() => {
     async function initSession() {
@@ -195,32 +198,37 @@ export default function HomePage() {
   return (
     <main
       style={{
-        maxWidth: "600px",
+        width: "80vw",
+        maxWidth: "1000px",
         margin: "0 auto",
         padding: "1.5rem",
         fontFamily: "system-ui, sans-serif",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column"
       }}
     >
       <h1 style={{ fontSize: "1.5rem", marginBottom: "1rem" }}>
-        Chat UI {'>'} FastAPI /echo
+        LLM Chat 
       </h1>
 
       <div
         style={{
-          border: "1px solid #ddd",
+          border: "1px solid #000",
           borderRadius: "8px",
           padding: "1rem",
+          flex: 1,
           height: "400px",
           overflowY: "auto",
           marginBottom: "1rem",
-          background: "#fafafa",
+          background: "#000",
           display: "flex",
           flexDirection: "column",
           gap: "0.5rem",
         }}
       >
         {messages.length === 0 && (
-          <p style={{ color: "#888" }}>Type a message and it will be echoed by FastAPI</p>
+          <p style={{ color: "#888" }}>Type a message to chat with LLM</p>
         )}
         {messages.map((m) => (
           <div
@@ -232,9 +240,18 @@ export default function HomePage() {
               marginBottom: "0.5rem",
               padding: "0.5rem 0.75rem",
               borderRadius: "6px",
+              maxWidth: "100%",
             }}
           >
-            {m.text}
+            {m.role === "assistant" ? (
+              <div className="markdown">  
+                <ReactMarkdown>
+                  {m.text}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              m.text
+            )}
           </div>
         ))}
         <div ref={bottomRef} />
@@ -271,4 +288,3 @@ export default function HomePage() {
     </main>
   );
 }
-
