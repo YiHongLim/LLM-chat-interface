@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 type Message = {
   id: number;
@@ -13,17 +13,46 @@ export default function HomePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  console.log("Fetching messages for session", sessionId);
 
   useEffect(() => {
     async function initSession() {
       // Load existing session_id from localStorage
       const stored = window.localStorage.getItem("session_id");
+      
       if (stored) {
-        setSessionId(Number(stored));
-        return;
+        const id = Number(stored);
+
+        try {
+          const res = await fetch(`http://127.0.0.1:8000/sessions/${id}/messages`);
+          if (!res.ok) {
+            console.error("Session not found, creating new one", res.status);
+            window.localStorage.removeItem("session_id");
+            throw new Error("Session not found");
+          }
+          const data: 
+          {
+            id: number,
+            role: string;
+            content: string
+          }[] = await res.json();
+
+          setSessionId(id);
+          setMessages(
+            data.map((m, idx) => ({
+              id: idx + 1,
+              role: m.role as "user" | "assistant",
+              text: m.content,
+            }))
+          );
+          return;
+        }
+        catch(err) {
+          console.error("Error loading session:", err)
+        }
       }
 
-      // If not found, create a new session on the backend
+      // If not found or error, create a new session on the backend
       const res = await fetch("http://127.0.0.1:8000/sessions", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -44,6 +73,12 @@ export default function HomePage() {
 
     initSession();
   }, []);
+
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth"});
+  }, [messages])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,7 +147,6 @@ export default function HomePage() {
           if (!dataStr) continue;
 
           if (dataStr === "[DONE]") {
-            setLoading(false)
             return;
           }
 
@@ -203,6 +237,7 @@ export default function HomePage() {
             {m.text}
           </div>
         ))}
+        <div ref={bottomRef} />
       </div>
 
       <form onSubmit={handleSubmit} style={{ display: "flex", gap: "0.5rem" }}>
@@ -218,6 +253,7 @@ export default function HomePage() {
             border: "1px solid #ccc",
           }}
         />
+        
         <button
           type="submit"
           style={{
@@ -229,9 +265,10 @@ export default function HomePage() {
             cursor: loading ? "not-allowed" : "pointer",
           }}
         >
-          {loading ? "Sending..." : "Send"}
+          {loading ? "Generating..." : "Send"}
         </button>
       </form>
     </main>
   );
 }
+
