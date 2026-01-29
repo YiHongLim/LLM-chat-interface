@@ -75,7 +75,7 @@ def get_messages(
         raise HTTPException(status_code=404, detail="Session not found")
     return db_session.messages
 
-@app.post("/chat", response_model=schemas.MessageOut)
+@app.post("/chat")
 def chat(
     payload: schemas.MessageCreate,
     db: OrmSession = Depends(get_db),
@@ -113,7 +113,7 @@ def chat(
     db.commit()
     db.refresh(user_msg)
 
-    async def generate():
+    def generate():
         assistant_content = ""
 
         try:
