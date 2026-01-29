@@ -90,6 +90,20 @@ def chat(
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found")
     
+    system_message = {
+        "role": "system",
+        "content": (
+            "Always format replies in Markdown with:\n"
+            "- short paragraphs\n"
+            "- headings when useful\n"
+            "- When listing items, YOU MUST use a Markdown bullet list, exactly like this example:\n\n"
+            "- Item 1\n"
+            "- Item 2\n"
+            "- Item 3\n\n"
+            "Do not just put items on new lines without a leading '- '."
+            "- bold key terms.\n"
+        )
+    }
     # Load history
     history = (db.query(models.Message)
                .filter(models.Message.session_id == payload.session_id)
@@ -97,7 +111,7 @@ def chat(
                .all()
                )
     
-    chat_history = [
+    chat_history = [system_message] + [
         {"role": msg.role, "content": msg.content} for msg in history
     ]
     current_user_msg = {"role": "user", "content": payload.message}
@@ -134,6 +148,9 @@ def chat(
             error_payload = {"error" :f"OpenAI error: {str(e)}"}
             yield f"data: {json.dumps(error_payload)}\n\n"
             return
+        
+        print("ASSISTANT RAW CONTENT:\n", repr(assistant_content))
+
         # Save full assistant message in DB
         try:
             assistant_msg = models.Message(
