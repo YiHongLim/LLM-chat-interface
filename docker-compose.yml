@@ -1,0 +1,38 @@
+services:
+  backend:
+    build: ./backend
+    container_name: chat-backend
+    env_file: .env
+    environment:
+      - DATABASE_URL=sqlite:///./chat.db
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: chat-frontend
+    env_file: .env
+    environment:
+      - API_BASE_URL=http://backend:8000
+      - NODE_ENV=development
+    ports:
+      - "3000:3000"
+    command: npm run dev
+    volumes:
+      - ./:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

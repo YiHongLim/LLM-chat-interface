@@ -7,9 +7,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session as OrmSession, sessionmaker
 from typing import List
 from openai import OpenAI
+from fastapi import FastAPI
 
-from . import schemas, models
-from .database import Base, engine, SessionLocal
+import schemas, models
+from database import Base, engine, SessionLocal
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -35,6 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 def get_db():
     db = SessionLocal()
     try:
@@ -47,7 +49,7 @@ class EchoRequest(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello from FastAPI with SQLite"}
+    return {"message": "Hello GET /","status": "healthy"}
 
 # Creates a new Session
 @app.post("/sessions", response_model=schemas.SessionOut)
@@ -167,5 +169,6 @@ def chat(
         yield "data: [DONE]\n\n"
     return StreamingResponse(generate(), media_type="text/event-stream")
 
-def echo(req: EchoRequest):
-    return {"you sent": req.message}
+@app.get("/echo")
+def echo():
+    return {"message": "Hello from Backend"}

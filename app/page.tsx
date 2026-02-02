@@ -12,12 +12,15 @@ type Message = {
   role: "user" | "assistant";
 };
 
+
+
 export default function HomePage() {
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  
   useEffect(() => {
     async function initSession() {
       // Load existing session_id from localStorage
