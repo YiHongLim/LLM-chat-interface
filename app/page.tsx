@@ -19,6 +19,7 @@ export default function HomePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   
   useEffect(() => {
@@ -55,9 +56,11 @@ export default function HomePage() {
         }
         catch(err) {
           console.error("Error loading session:", err)
+          setError("Could not load previous session. Starting a new chat.")
         }
       }
 
+      try {
       // If not found or error, create a new session on the backend
       const res = await fetch("http://127.0.0.1:8000/sessions", {
         method: "POST",
@@ -65,16 +68,25 @@ export default function HomePage() {
         body: JSON.stringify({})
       });
 
-      if (!res.ok) {
-        console.error("Failed to create session", res.status);
+        if (!res.ok) {
+          console.error("Failed to create session", res.status);
+          setError("Chat service is unavailable. Please try again later.");
+          return;
+        }
+
+        const data: {id:number} = await res.json()
+
+        // Save to state + localStorage
+        setSessionId(data.id)
+        window.localStorage.setItem("session_id", String(data.id));
+      } catch (err) {
+        console.error("Network error creating session:", err);
+        setError("Chat service is unavilable. Please try again later.");
         return;
       }
+      
 
-      const data: {id:number} = await res.json()
-
-      // Save to state + localStorage
-      setSessionId(data.id)
-      window.localStorage.setItem("session_id", String(data.id));
+      
     }
 
     initSession();
@@ -89,6 +101,8 @@ export default function HomePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sessionId) return;
+
+    setError("");
 
     const trimmed = input.trim();
     if (!trimmed) return;
@@ -191,6 +205,7 @@ export default function HomePage() {
       };
       return copy;
     });
+    setError("Chat service is temporarily unavailable. Please try again later.")
   } finally {
     setLoading(false);
   }
@@ -259,7 +274,11 @@ export default function HomePage() {
         ))}
         <div ref={bottomRef} />
       </div>
-
+        {error && (
+          <div style={{color: "red", marginBottom: "0.5rem"}}>
+            {error}
+          </div>
+        )}
       <form onSubmit={handleSubmit} style={{ display: "flex", gap: "0.5rem" }}>
         <input
           type="text"
