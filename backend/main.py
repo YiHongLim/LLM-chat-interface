@@ -77,12 +77,24 @@ def get_messages(
         raise HTTPException(status_code=404, detail="Session not found")
     return db_session.messages
 
+MAX_TOKENS = 1024
+
+def approx_tokens(text: str) -> int:
+    return max(1, len(text) // 4)
+
 @app.post("/chat")
 def chat(
     payload: schemas.MessageCreate,
     db: OrmSession = Depends(get_db),
 ):
+    if not payload.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
     
+    if approx_tokens(payload.message) > MAX_TOKENS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Message too long (approx > {MAX_TOKENS} tokens)."
+        )
     db_session = (
         db.query(models.Session)
         .filter(models.Session.id == payload.session_id)
@@ -134,7 +146,7 @@ def chat(
 
         try:
             stream = client.chat.completions.create(
-                model="gpt-5-nano",
+                model="gpt-4.1-mini",
                 messages=chat_history,
                 stream=True,
             )
