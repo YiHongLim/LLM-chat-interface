@@ -1,4 +1,4 @@
-"use client";
+"use client"; 
 
 import { useEffect, useState, useRef, ComponentPropsWithoutRef } from "react";
 import ReactMarkdown, {
@@ -10,6 +10,7 @@ type Message = {
   id: number;
   text: string;
   role: "user" | "assistant";
+  isFinal?: boolean;
 };
 
 
@@ -50,6 +51,7 @@ export default function HomePage() {
               id: idx + 1,
               role: m.role as "user" | "assistant",
               text: m.content,
+              isFinal: true,
             }))
           );
           return;
@@ -84,11 +86,7 @@ export default function HomePage() {
         setError("Chat service is unavilable. Please try again later.");
         return;
       }
-      
-
-      
     }
-
     initSession();
   }, []);
 
@@ -123,7 +121,22 @@ export default function HomePage() {
     setInput("");
     setLoading(true);
 
-    const assistantIndex = messages.length + 1;
+    const updateAssistant = (text: string, isFinal = false) => {
+      setMessages((prev) => {
+        const idx = prev.findIndex(
+          m => m.role === "assistant" && m.id === assistantMessage.id
+        );
+        if (idx === -1) return prev;
+
+        const copy = [...prev];
+        copy[idx] = {
+          ...copy[idx],
+          text,
+          isFinal,
+        };
+        return copy;
+      })
+    }
 
     try {
       const res = await fetch("http://127.0.0.1:8000/chat", {
@@ -138,17 +151,32 @@ export default function HomePage() {
       });
 
       if (!res.ok) {
-        throw new Error(`HTTP error ${res.status}`);
+        let message = `Request failed with status ${res.status}`;
+        try {
+          const errBody = await res.json();
+          if (errBody && typeof errBody.detail === "string") {
+            message = errBody.detail
+          } 
+        } catch {
+          
+        }
+        setError(message);
+        return;
       }
 
       if (!res.body) {
-        throw new Error("ReadableStream not supported or no body on response");
+        const msg = "ReadableStream not supported or no body on response.";
+        setError(msg);
+        updateAssistant(msg, true);
+        return;
       }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let fullText = "";
       let buffer = "";
+
+      let lastUpdate = performance.now();
 
       while (true) {
         const { done, value } = await reader.read();
@@ -158,6 +186,7 @@ export default function HomePage() {
         buffer += decoder.decode(value, {stream: true});
         const lines = buffer.split("\n\n");
         buffer = lines.pop() || "";
+        console.log("raw chunk:", buffer)
 
         for (const rawLine of lines) {
           const line = rawLine.trim();
@@ -167,27 +196,25 @@ export default function HomePage() {
           if (!dataStr) continue;
 
           if (dataStr === "[DONE]") {
-            return;
+            updateAssistant(fullText, true);
+            break;
           }
 
           try {
             const parsed = JSON.parse(dataStr);
 
             if (parsed.error) {
-              throw new Error(parsed.Error);
+              throw new Error(parsed.error);
             }
             
             if (parsed.token) {
               fullText += parsed.token;
 
-              setMessages(prev => {
-                const copy = [...prev];
-                copy[assistantIndex] = {
-                  ...copy[assistantIndex],
-                  text: fullText
-                };
-                return copy;
-              });
+              const now = performance.now()
+              if (now - lastUpdate > 50) {
+                updateAssistant(fullText, false);
+                lastUpdate = now;
+              }
             }
           }
           catch (err) {
@@ -195,23 +222,20 @@ export default function HomePage() {
           }
         }
       } 
+      updateAssistant(fullText, true);
   } catch(err) {
     console.error(err);
-    setMessages((prev) => {
-      const copy = [...prev];
-      copy[assistantIndex] = {
-        ...copy[assistantIndex],
-        text: "Error calling API.",
-      };
-      return copy;
-    });
-    setError("Chat service is temporarily unavailable. Please try again later.")
+    const msg = "Chat service is temporarily unavailable. Please try again later.";
+    updateAssistant(msg, true);
+    setError(msg)
   } finally {
     setLoading(false);
   }
   };
 
-  
+  const MAX_CHARS = 4000;
+  const isTooLong = input.length > MAX_CHARS
+  const MAX_ROWS = 6;
 
   return (
     <main
@@ -263,7 +287,7 @@ export default function HomePage() {
           >
             {m.role === "assistant" ? (
               <div className="markdown">  
-                <ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {m.text}
                 </ReactMarkdown>
               </div>
@@ -279,6 +303,7 @@ export default function HomePage() {
             {error}
           </div>
         )}
+        
       <form onSubmit={handleSubmit} style={{ display: "flex", gap: "0.5rem" }}>
         <input
           type="text"
@@ -295,18 +320,25 @@ export default function HomePage() {
         
         <button
           type="submit"
+          disabled={!sessionId || loading || isTooLong}
           style={{
             padding: "0.5rem 0.9rem",
             borderRadius: "6px",
             border: "none",
-            background: loading ? "#9ca3af" : "#2563eb",
+            background: !sessionId || loading || isTooLong ? "#9ca3af" : "#2563eb",
             color: "white",
-            cursor: loading ? "not-allowed" : "pointer",
+            cursor: !sessionId || loading || isTooLong ? "not-allowed" : "pointer",
           }}
         >
           {loading ? "Generating..." : "Send"}
         </button>
       </form>
+
+      {isTooLong && (
+          <div style={{ color: "red", marginTop: "0.25rem"}}>
+            Message too long (max {MAX_CHARS} characters).
+          </div>
+        )}
     </main>
   );
 }
