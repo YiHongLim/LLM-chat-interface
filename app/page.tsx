@@ -21,6 +21,7 @@ export default function HomePage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [fatalError, setFatalError] = useState(false);
 
   
   useEffect(() => {
@@ -73,6 +74,7 @@ export default function HomePage() {
         if (!res.ok) {
           console.error("Failed to create session", res.status);
           setError("Chat service is unavailable. Please try again later.");
+          setFatalError(true);
           return;
         }
 
@@ -161,6 +163,8 @@ export default function HomePage() {
           
         }
         setError(message);
+        setFatalError(true);
+
         return;
       }
 
@@ -226,7 +230,7 @@ export default function HomePage() {
   } catch(err) {
     console.error(err);
     const msg = "Chat service is temporarily unavailable. Please try again later.";
-    updateAssistant(msg, true);
+    setFatalError(true);
     setError(msg)
   } finally {
     setLoading(false);
@@ -320,14 +324,14 @@ export default function HomePage() {
         
         <button
           type="submit"
-          disabled={!sessionId || loading || isTooLong}
+          disabled={!sessionId || loading || isTooLong || fatalError}
           style={{
             padding: "0.5rem 0.9rem",
             borderRadius: "6px",
             border: "none",
-            background: !sessionId || loading || isTooLong ? "#9ca3af" : "#2563eb",
+            background: !sessionId || loading || isTooLong || fatalError ? "#9ca3af" : "#2563eb",
             color: "white",
-            cursor: !sessionId || loading || isTooLong ? "not-allowed" : "pointer",
+            cursor: !sessionId || loading || isTooLong || fatalError ? "not-allowed" : "pointer",
           }}
         >
           {loading ? "Generating..." : "Send"}
